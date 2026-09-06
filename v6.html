@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#05060a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>NERVE</title>
+<link rel="manifest" href="manifest.webmanifest">
+
+<!-- ==========================================================
+     YOUTUBE PLAYABLES SDK
+     Yeh line HAR game code se PEHLE aani chahiye. Google isay
+     publishing ke waqt check karta hai. Isay hilana mat.
+     Local par yeh SDK khud ko no-op kar deta hai, is liye game
+     offline bhi chalta rahega.
+     ========================================================== -->
+<!-- YouTube SDK PWA build mein nahi: yeh offline app hai -->
+
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  /* 100dvh = mobile browser ka asli screen. Sirf 100% use karne se
+     address bar chhupte waqt game uchhalta hai. */
+  html,body{height:100%;height:100dvh;overflow:hidden;
+            overscroll-behavior:none;touch-action:none}
+  body{background:#05060a;font-family:"Trebuchet MS",Verdana,system-ui,sans-serif;
+       display:flex;align-items:center;justify-content:center;
+       padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+       -webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;
+       -webkit-touch-callout:none}
+  #wrap{position:relative;width:100%;max-width:420px;aspect-ratio:9/16;max-height:100%}
+  canvas{width:100%;height:100%;display:block;touch-action:none}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c"></canvas></div>
+<script>
+(function(){
+"use strict";
+
+/* ================= 0. PLAYABLES SDK BRIDGE =================
+   Poora SDK sirf isi section mein hai. Baqi game ko nahi pata
+   ke wo YouTube par chal raha hai ya tumhare laptop par. */
+
+var YT = (typeof ytgame !== "undefined" && ytgame.IN_PLAYABLES_ENV) ? ytgame : null;
+var IN_YT = !!YT;
+
+var firstFrameSent=false, gameReadySent=false, dataReady=false, paused=false;
+var ytAudioOK=true;                 // YouTube ki audio setting
+var userSound=true;                 // apna mute button (sirf YouTube ke bahar)
+var savePending=false, saveTimer=0, lastSentScore=-1, deaths=0;
+
+// ---- ads: manzoori milne ke baad true kar dena ----
+var ADS={ enabled:false, everyNDeaths:3 };
+
+function logErr(){  try{ if(YT) YT.health.logError();   }catch(e){} }
+function logWarn(){ try{ if(YT) YT.health.logWarning(); }catch(e){} }
+window.addEventListener("error", logErr);
+window.addEventListener("unhandledrejection", logWarn);
+
+/* ---- cloud save: YouTube par saveData, warna localStorage ---- */
+var best=0;
+function serialize(){ return JSON.stringify({v:1,best:best}); }
+function applySave(str){
+  try{
+    var o=JSON.parse(str||"{}");
+    if(o && typeof o.best==="number" && isFinite(o.best)) best=Math.max(best,Math.floor(o.best));
+  }catch(e){ logWarn(); }
+}
+function loadSave(){
+  if(YT){
+    var done=false;
+    var finish=function(){ if(!done){ done=true; dataReady=true; tryGameReady(); } };
+    try{
+      YT.game.loadData().then(function(s){ applySave(s); finish(); },
+                              function(){ logWarn(); finish(); });
+    }catch(e){ logWarn(); finish(); }
+    setTimeout(finish,3000);  // agar SDK jawab na de to game atak na jaye
+  } else {
+    try{
+      var s=localStorage.getItem("nerve_save");
+      if(s) applySave(s);
+      else { var old=localStorage.getItem("nerve_best"); if(old) best=parseInt(old,10)||0; }
+    }catch(e){}
+    dataReady=true; tryGameReady();
+  }
+}
+function saveNow(){
+  savePending=false;
+  var str=serialize();
+  if(YT){
+    try{ var p=YT.game.saveData(str); if(p&&p.catch) p.catch(function(){ logWarn(); }); }
+    catch(e){ logWarn(); }
+  } else { try{ localStorage.setItem("nerve_save",str); }catch(e){} }
+}
+function queueSave(){ savePending=true; saveTimer=1.2; }   // debounce - spam save mat karo
+
+/* ---- best score YouTube ke leaderboard par ---- */
+function sendScore(v){
+  if(!YT) return;
+  v=Math.floor(v);
+  if(!isFinite(v)||v<=lastSentScore) return;
+  lastSentScore=v;
+  try{ var p=YT.engagement.sendScore({value:v}); if(p&&p.catch) p.catch(function(){ logWarn(); }); }
+  catch(e){ logWarn(); }
+}
+function ytFirstFrame(){ if(YT){ try{ YT.game.firstFrameReady(); }catch(e){ logErr(); } } }
+function ytGameReady(){  if(YT){ try{ YT.game.gameReady();      }catch(e){ logErr(); } } }
+/* gameReady() ko sirf animation loop par mat chhodo. Agar browser
+   frames rok de (tab background mein ho) to handshake adhoora reh
+   jayega aur YouTube ki certification fail ho jayegi. Is liye jo bhi
+   kaam aakhir mein pura ho, wohi isay trigger karta hai. */
+function tryGameReady(){
+  if(gameReadySent || !firstFrameSent || !dataReady) return;
+  gameReadySent=true; ytGameReady();
+}
+function maybeAd(){
+  if(!ADS.enabled||!YT) return;
+  if(deaths%ADS.everyNDeaths!==0) return;
+  try{ var p=YT.ads.requestInterstitialAd(); if(p&&p.catch) p.catch(function(){}); }catch(e){}
+}
+
+/* ================= 1. TUNING KNOBS ================= */
+var CFG={
+  baseSpeed:0.75, speedGain:1.075, baseZone:0.26, zoneShrink:0.90,
+  minZone:0.028, maxSpeed:4.2,
+  closeMargin:0.040, perfectBand:0.18, slowMoTime:0.85, slowMoRate:0.16
+};
+
+/* ================= 2. COLOUR TIERS ================= */
+var TIERS=[
+  {at:0, name:"WARM UP",c:"#22d3a6",glow:"rgba(34,211,166,"},
+  {at:4, name:"NICE",   c:"#38bdf8",glow:"rgba(56,189,248,"},
+  {at:7, name:"HOT",    c:"#ffd166",glow:"rgba(255,209,102,"},
+  {at:11,name:"DANGER", c:"#fb923c",glow:"rgba(251,146,60,"},
+  {at:16,name:"INSANE", c:"#ff4d8d",glow:"rgba(255,77,141,"},
+  {at:22,name:"GODLIKE",c:"#a855f7",glow:"rgba(168,85,247,"}
+];
+function tier(){ var t=TIERS[0]; for(var i=0;i<TIERS.length;i++) if(S.level>=TIERS[i].at) t=TIERS[i]; return t; }
+var MILESTONES={5:"HEATING UP",10:"UNSTOPPABLE",15:"NO FEAR",20:"LEGEND",25:"INHUMAN"};
+
+var cvs=document.getElementById("c"), ctx=cvs.getContext("2d");
+var W=450,H=800;
+function resize(){
+  var dpr=Math.min(window.devicePixelRatio||1,2);
+  cvs.width=W*dpr; cvs.height=H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+resize(); window.addEventListener("resize",resize);
+
+var BAR ={x:45,y:460,w:360,h:56};
+var CASH={x:125,y:596,w:200,h:64};
+var SND ={x:338,y:34, w:78, h:30};
+
+/* ================= 3. AUDIO =================
+   YouTube par audio ka faisla YouTube karta hai, hum nahi.
+   Isi liye audioAllowed() dono cheezon ko check karta hai. */
+var AC=null,master=null,mTimer=0,mStep=0,beat=0,drone=null,droneGain=null;
+function audioAllowed(){ return ytAudioOK && (IN_YT ? true : userSound); }
+function applyAudioGate(){
+  if(!AC) return;
+  try{
+    if(audioAllowed()){ if(AC.state==="suspended") AC.resume(); master.gain.value=0.85; }
+    else master.gain.value=0;
+  }catch(e){}
+}
+function initAudio(){
+  if(AC) return;
+  try{
+    AC=new (window.AudioContext||window.webkitAudioContext)();
+    master=AC.createGain(); master.gain.value=audioAllowed()?0.85:0; master.connect(AC.destination);
+    drone=AC.createOscillator(); droneGain=AC.createGain();
+    drone.type="sawtooth"; drone.frequency.value=55; droneGain.gain.value=0;
+    var lp=AC.createBiquadFilter(); lp.type="lowpass"; lp.frequency.value=300;
+    drone.connect(lp); lp.connect(droneGain); droneGain.connect(master); drone.start();
+  }catch(e){ AC=null; logWarn(); }
+}
+function blip(f,dur,type,vol,to){
+  if(!AC||!audioAllowed()) return;
+  var o=AC.createOscillator(),g=AC.createGain(),t=AC.currentTime;
+  o.type=type||"sine"; o.frequency.setValueAtTime(f,t);
+  if(to) o.frequency.exponentialRampToValueAtTime(Math.max(20,to),t+dur);
+  g.gain.setValueAtTime(0,t);
+  g.gain.linearRampToValueAtTime(vol||0.18,t+0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  o.connect(g); g.connect(master); o.start(); o.stop(t+dur+0.03);
+}
+function noise(dur,cut,vol,decay){
+  if(!AC||!audioAllowed()) return;
+  var len=Math.floor(AC.sampleRate*dur),b=AC.createBuffer(1,len,AC.sampleRate),d=b.getChannelData(0);
+  for(var i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,decay||2.6);
+  var s=AC.createBufferSource(); s.buffer=b;
+  var f=AC.createBiquadFilter(); f.type=cut>2000?"highpass":"lowpass"; f.frequency.value=cut;
+  var g=AC.createGain(); g.gain.value=vol;
+  s.connect(f); f.connect(g); g.connect(master); s.start();
+}
+var SCALE=[0,3,5,7,10],ROOT=220;
+function hz(s){ return ROOT*Math.pow(2,s/12); }
+function musicTick(){
+  var deg=SCALE[mStep%SCALE.length],oct=Math.floor((mStep/SCALE.length)%3);
+  blip(hz(deg+oct*12),0.16,"triangle",0.05);
+  if(mStep%4===0){ blip(58,0.20,"sine",0.30,32); blip(hz(deg-24),0.26,"sine",0.10); }
+  if(mStep%2===1) noise(0.05,7000,0.045,3.5);
+  if(mStep%8===4) blip(hz(deg+24),0.08,"square",0.022);
+  beat=1; mStep++;
+}
+function sfxHit(lv,perfect){
+  if(perfect){ blip(520+lv*40,0.11,"square",0.17,980+lv*60); blip(780+lv*40,0.16,"triangle",0.10); }
+  else blip(300+lv*30,0.12,"square",0.13,520+lv*45);
+}
+function sfxMiss(){ blip(300,0.45,"sawtooth",0.20,55); noise(0.4,700,0.4); }
+function sfxCash(){ [0,4,7,12,16].forEach(function(n,i){ setTimeout(function(){ blip(hz(n+12),0.2,"triangle",0.14); },i*65); }); }
+function sfxMile(){ [0,7,12,19].forEach(function(n,i){ setTimeout(function(){ blip(hz(n+24),0.3,"square",0.11); },i*80); }); }
+function buzz(ms){ try{ if(navigator.vibrate) navigator.vibrate(ms); }catch(e){} }
+
+/* ---- SDK ke audio + pause callbacks ---- */
+if(YT){
+  try{ ytAudioOK=!!YT.system.isAudioEnabled(); }catch(e){ ytAudioOK=true; logWarn(); }
+  try{ YT.system.onAudioEnabledChange(function(on){ ytAudioOK=!!on; applyAudioGate(); }); }catch(e){ logWarn(); }
+  try{ YT.system.onPause(function(){ doPause(); }); }catch(e){ logWarn(); }
+  try{ YT.system.onResume(function(){ doResume(); }); }catch(e){ logWarn(); }
+}
+function doPause(){
+  paused=true;
+  saveNow();                                  // pause par foran save - window chhoti hoti hai
+  try{ if(AC&&AC.state==="running") AC.suspend(); }catch(e){}
+}
+function doResume(){
+  paused=false; last=performance.now();
+  try{ if(AC&&audioAllowed()) AC.resume(); }catch(e){}
+}
+document.addEventListener("visibilitychange",function(){
+  if(document.hidden) doPause(); else doResume();
+});
+window.addEventListener("pagehide",function(){ saveNow(); });
+
+/* ================= 4. PARTICLES + POPUPS ================= */
+var parts=[],pops=[];
+function burst(x,y,n,cols,spd){
+  for(var i=0;i<n;i++){
+    var a=Math.random()*Math.PI*2,s=spd*(0.25+Math.random()*0.85);
+    parts.push({x:x,y:y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-55,life:1,
+                col:cols[(Math.random()*cols.length)|0],r:2+Math.random()*3.5});
+  }
+}
+function pop(x,y,txt,col,size){ pops.push({x:x,y:y,txt:txt,col:col,size:size||24,life:1}); }
+
+/* ================= 5. GAME STATE ================= */
+var S=null,TT=0,TS=1,slowT=0,idleT=0;
+function placeZone(){ var m=0.02; S.zoneA=m+Math.random()*(1-S.zoneW-m*2); }
+function newRun(keep){
+  var carry=(keep&&S)?S.banked:0;
+  S={banked:carry,pot:0,level:1,pos:0,dir:1,zoneA:0,zoneW:CFG.baseZone,
+     speed:CFG.baseSpeed,alive:true,flash:0,msg:"",msgSub:"",msgT:0,shake:0,
+     happyT:0,blink:2,popT:0,zoom:1,chain:0,missGap:-1,missPos:0,
+     mile:"",mileT:0,mileLv:0};
+  placeZone();
+}
+newRun(false);
+function say(t,sub){ S.msg=t; S.msgSub=sub||""; S.msgT=1.0; }
+
+/* ================= 6. THE CORE LOOP ================= */
+function stop(){
+  initAudio(); idleT=0;
+  if(!S.alive){ newRun(true); return; }
+  var mx=BAR.x+S.pos*BAR.w, cy=BAR.y+BAR.h/2, T=tier();
+  var inZone=S.pos>=S.zoneA && S.pos<=S.zoneA+S.zoneW;
+
+  if(inZone){
+    var mid=S.zoneA+S.zoneW/2;
+    var perfect=Math.abs(S.pos-mid) < S.zoneW*CFG.perfectBand;
+    var gain=perfect ? S.level*2 : S.level;
+    S.pot+=gain; S.level+=1;
+    S.chain = perfect ? S.chain+1 : 0;
+    S.zoneW=Math.max(CFG.minZone,S.zoneW*CFG.zoneShrink);
+    S.speed=Math.min(CFG.maxSpeed,S.speed*CFG.speedGain);
+    placeZone();
+    S.flash=perfect?-0.26:-0.14; S.happyT=perfect?0.5:0.32;
+    S.popT=1; S.zoom=perfect?1.07:1.035;
+    burst(mx,cy,perfect?26:14,[T.c,"#ffffff","#ffd166"],perfect?260:200);
+    pop(mx,cy-46,"+"+gain,perfect?"#ffd166":T.c,perfect?32:24);
+    sfxHit(S.level,perfect); buzz(perfect?[12,18,12]:18);
+    if(perfect) say("PERFECT!", S.chain>=2?("CHAIN x"+S.chain):"");
+    else        say("GOOD","");
+    var ms=MILESTONES[S.level];
+    if(ms){ S.mile=ms; S.mileLv=S.level; S.mileT=1.6; sfxMile(); buzz([20,40,20,40]);
+            burst(W/2,250,60,[T.c,"#ffffff","#ffd166","#38bdf8"],330); }
+  } else {
+    var d=(S.pos<S.zoneA)?(S.zoneA-S.pos):(S.pos-(S.zoneA+S.zoneW));
+    var close=d<CFG.closeMargin;
+    S.alive=false; S.pot=0; S.flash=0.38; S.shake=close?9:16;
+    S.missGap=close?d:-1; S.missPos=S.pos; S.chain=0;
+    burst(mx,cy,close?18:30,["#ff4d5e","#ff8fa0","#ffffff"],260);
+    sfxMiss(); buzz(close?60:120);
+    if(close){ TS=CFG.slowMoRate; slowT=CFG.slowMoTime;
+               say("SO CLOSE",Math.round(d*BAR.w)+"px door"); }
+    else say("WIPED OUT","");
+    deaths++; maybeAd();
+  }
+}
+function cashOut(){
+  initAudio(); idleT=0;
+  if(!S.alive||S.pot===0) return;
+  var got=S.pot;
+  S.banked+=got;
+  if(S.banked>best){
+    best=S.banked;
+    queueSave(); sendScore(best);
+    pop(W/2,540,"NEW BEST!","#ffd166",26);
+  }
+  burst(CASH.x+CASH.w/2,CASH.y+CASH.h/2,40,["#22d3a6","#ffffff","#ffd166"],250);
+  pop(W/2,CASH.y-24,"+"+got+" BANKED","#22d3a6",26);
+  S.pot=0; S.level=1; S.zoneW=CFG.baseZone; S.speed=CFG.baseSpeed; S.chain=0;
+  placeZone(); S.flash=-0.32; S.happyT=0.6; S.zoom=1.05;
+  sfxCash(); buzz([15,30,15,30,40]); say("BANKED","");
+}
+
+/* ================= 7. INPUT ================= */
+function hitBox(b,px,py){ return px>=b.x&&px<=b.x+b.w&&py>=b.y&&py<=b.y+b.h; }
+function toLocal(e){
+  var r=cvs.getBoundingClientRect(),t=(e.touches&&e.touches[0])?e.touches[0]:e;
+  return {x:(t.clientX-r.left)*(W/r.width),y:(t.clientY-r.top)*(H/r.height)};
+}
+var lastTouch=0;
+function press(e){
+  if(e.cancelable) e.preventDefault();
+  /* Mobile par touchstart ke foran baad browser ek naqli mousedown bhi
+     bhejta hai. Us se ek tap DO baar count ho raha tha - yani ek hi
+     tap par pehle hit aur phir foran miss. Yeh guard usay rokta hai. */
+  var now=Date.now();
+  if(e.type==="touchstart") lastTouch=now;
+  else if(now-lastTouch<600) return;
+  if(!gameReadySent||paused) return;              // loading ke dauran input band
+  var p=toLocal(e);
+  if(!IN_YT && hitBox(SND,p.x,p.y)){ initAudio(); userSound=!userSound; applyAudioGate(); idleT=0; return; }
+  if(hitBox(CASH,p.x,p.y)) cashOut(); else stop();
+}
+cvs.addEventListener("mousedown",press);
+cvs.addEventListener("touchstart",press,{passive:false});
+
+/* Mobile ke default gestures band karo. Sab se zaroori: pull-to-refresh.
+   Us ke baghair, khelte hue ungli zara si neeche khisakne par poora
+   page reload ho jata hai aur run zaya. */
+document.addEventListener("touchmove",function(e){ if(e.cancelable) e.preventDefault(); },{passive:false});
+document.addEventListener("gesturestart",function(e){ e.preventDefault(); });
+document.addEventListener("dblclick",function(e){ e.preventDefault(); });
+document.addEventListener("contextmenu",function(e){ e.preventDefault(); });
+window.addEventListener("keydown",function(e){
+  if(!gameReadySent||paused) return;
+  if(e.code==="Space"||e.code==="Enter"){ e.preventDefault(); stop(); }
+  if(e.code==="KeyC"){ e.preventDefault(); cashOut(); }
+  if(e.code==="KeyM" && !IN_YT){ initAudio(); userSound=!userSound; applyAudioGate(); }
+});
+
+/* ================= 8. DRAW HELPERS ================= */
+function rr(x,y,w,h,r){
+  ctx.beginPath(); ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+}
+function text(t,x,y,size,color,align){
+  ctx.fillStyle=color; ctx.textAlign=align||"center"; ctx.textBaseline="middle";
+  ctx.font="bold "+size+"px 'Trebuchet MS', Verdana, sans-serif"; ctx.fillText(t,x,y);
+}
+
+/* ================= 9. THE CHARACTER ================= */
+function moodNow(){
+  if(!S.alive) return 3;
+  if(S.happyT>0) return 1;
+  if(S.level>=8) return 2;
+  return 0;
+}
+function drawChar(cx,cy){
+  var m=moodNow(),T=tier(),col=T.c;
+  var grow=1+Math.min(S.level,24)*0.007;
+  var bob=Math.sin(TT*2.2)*4,rot=0,sq=1,w=74*grow,h=74*grow;
+  if(m===1) sq=1+Math.sin(S.happyT*20)*0.14;
+  if(m===2){ cx+=(Math.random()-0.5)*(2+S.level*0.15); bob=Math.sin(TT*8)*3; }
+  if(m===3){ rot=1.4; bob=22; col="#3a3f4c"; }
+  ctx.save();
+  ctx.translate(cx,cy+bob); ctx.rotate(rot); ctx.scale(sq,2-sq);
+  if(m===2){
+    ctx.strokeStyle=col; ctx.lineWidth=5; ctx.lineCap="round";
+    ctx.beginPath(); ctx.moveTo(-26,-h/2-6); ctx.lineTo(-9,-h/2-1);
+    ctx.moveTo(26,-h/2-6);  ctx.lineTo(9,-h/2-1); ctx.stroke();
+  }
+  ctx.shadowColor=col; ctx.shadowBlur=m===3?0:32;
+  rr(-w/2,-h/2,w,h,22); ctx.fillStyle=col; ctx.fill();
+  ctx.shadowBlur=0;
+  var ey=-9,eyes=[-17,17];
+  ctx.lineWidth=4; ctx.lineCap="round"; ctx.strokeStyle="#05060a";
+  if(m===3){
+    eyes.forEach(function(dx){
+      ctx.beginPath(); ctx.moveTo(dx-6,ey-6); ctx.lineTo(dx+6,ey+6);
+      ctx.moveTo(dx+6,ey-6); ctx.lineTo(dx-6,ey+6); ctx.stroke();
+    });
+  } else if(m===1){
+    eyes.forEach(function(dx){
+      ctx.beginPath(); ctx.arc(dx,ey+3,8,Math.PI*1.12,Math.PI*1.88); ctx.stroke();
+    });
+    ctx.fillStyle="rgba(255,90,120,0.45)";
+    ctx.beginPath(); ctx.ellipse(-27,6,7,4.5,0,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse( 27,6,7,4.5,0,0,Math.PI*2); ctx.fill();
+  } else {
+    var closed=S.blink<0,open=closed?0.14:1,r=(m===2)?10.5:8.5;
+    eyes.forEach(function(dx){
+      ctx.beginPath(); ctx.ellipse(dx,ey,r,r*open,0,0,Math.PI*2);
+      ctx.fillStyle="#ffffff"; ctx.fill();
+      if(!closed){
+        var px=(m===2)?dx:dx+Math.sin(TT*1.4)*2.2;
+        ctx.beginPath(); ctx.ellipse(px,ey+((m===2)?1:0),(m===2)?3.4:4.3,(m===2)?3.4:4.3,0,0,Math.PI*2);
+        ctx.fillStyle="#05060a"; ctx.fill();
+      }
+    });
+  }
+  ctx.strokeStyle="#05060a"; ctx.beginPath();
+  if(m===1)      ctx.arc(0,9,14,0.14*Math.PI,0.86*Math.PI);
+  else if(m===2) ctx.ellipse(0,15,6,7.5,0,0,Math.PI*2);
+  else if(m===3){ ctx.moveTo(-11,15); ctx.lineTo(11,15); }
+  else           ctx.arc(0,7,11,0.2*Math.PI,0.8*Math.PI);
+  ctx.stroke();
+  ctx.restore();
+  if(m===2){
+    ctx.fillStyle="#7dd3fc";
+    for(var i=0;i<2;i++){
+      var ph=(TT*1.5+i*0.5)%1, sx=cx+(i?34:-34), sy=cy-16+ph*46;
+      ctx.globalAlpha=1-ph;
+      ctx.beginPath(); ctx.ellipse(sx,sy,3.4,5,0,0,Math.PI*2); ctx.fill();
+    }
+    ctx.globalAlpha=1;
+  }
+}
+
+/* ================= 10. MAIN LOOP ================= */
+var last=performance.now();
+function frame(now){
+  if(paused){ last=now; requestAnimationFrame(frame); return; }
+
+  var raw=(now-last)/1000; last=now; if(raw>0.05) raw=0.05;
+  if(slowT>0){ slowT-=raw; if(slowT<=0) slowT=0; }
+  var targetTS=slowT>0?CFG.slowMoRate:1;
+  TS+=(targetTS-TS)*Math.min(1,raw*(slowT>0?26:5));
+  var dt=raw*TS;
+  TT+=dt; idleT+=raw;
+  var T=tier();
+
+  // ---- update ----
+  if(S.alive && gameReadySent){
+    S.pos+=S.dir*S.speed*dt;
+    while(S.pos>1||S.pos<0){
+      if(S.pos>1){ S.pos=2-S.pos; S.dir=-1; }
+      if(S.pos<0){ S.pos=-S.pos;  S.dir= 1; }
+    }
+    mTimer-=dt;
+    if(mTimer<=0){ musicTick(); mTimer=Math.max(0.115,0.40-S.level*0.013); }
+  }
+  if(droneGain){
+    var tg=(S.alive&&audioAllowed()&&S.level>=5)?Math.min(0.085,(S.level-4)*0.011):0;
+    droneGain.gain.value+=(tg-droneGain.gain.value)*Math.min(1,raw*4);
+    drone.frequency.value=55+S.level*2.4;
+  }
+  if(S.flash>0) S.flash=Math.max(0,S.flash-dt);
+  if(S.flash<0) S.flash=Math.min(0,S.flash+dt);
+  if(S.msgT>0)   S.msgT-=dt;
+  if(S.happyT>0) S.happyT-=dt;
+  if(S.popT>0)   S.popT=Math.max(0,S.popT-dt*3.2);
+  if(S.mileT>0)  S.mileT-=dt;
+  if(S.shake>0)  S.shake=Math.max(0,S.shake-dt*42);
+  S.zoom+=(1-S.zoom)*Math.min(1,dt*9);
+  beat=Math.max(0,beat-dt*4.5);
+  S.blink-=dt; if(S.blink<-0.1) S.blink=2.4+Math.random()*3.2;
+  for(var i=parts.length-1;i>=0;i--){
+    var p=parts[i];
+    p.vy+=680*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.life-=dt*1.5;
+    if(p.life<=0) parts.splice(i,1);
+  }
+  for(var j=pops.length-1;j>=0;j--){
+    var o=pops[j]; o.y-=46*dt; o.life-=dt*1.15;
+    if(o.life<=0) pops.splice(j,1);
+  }
+
+  // ---- draw ----
+  ctx.save();
+  if(S.shake>0) ctx.translate((Math.random()-0.5)*S.shake,(Math.random()-0.5)*S.shake);
+
+  var bg=ctx.createLinearGradient(0,0,0,H);
+  bg.addColorStop(0,"#0f1424"); bg.addColorStop(0.55,"#05060a"); bg.addColorStop(1,"#0d0a16");
+  ctx.fillStyle=bg; ctx.fillRect(-30,-30,W+60,H+60);
+
+  ctx.strokeStyle="rgba(255,255,255,0.022)"; ctx.lineWidth=1;
+  for(var gx=0;gx<=W;gx+=45){ ctx.beginPath(); ctx.moveTo(gx,0); ctx.lineTo(gx,H); ctx.stroke(); }
+  for(var gy=0;gy<=H;gy+=45){ ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(W,gy); ctx.stroke(); }
+
+  var gr=265*(1+beat*0.10);
+  var rad=ctx.createRadialGradient(W/2,BAR.y+BAR.h/2,10,W/2,BAR.y+BAR.h/2,gr);
+  rad.addColorStop(0,T.glow+((S.alive?0.20:0.05)+beat*0.07)+")");
+  rad.addColorStop(1,"rgba(0,0,0,0)");
+  ctx.fillStyle=rad; ctx.fillRect(0,170,W,640);
+
+  if(S.flash!==0){
+    ctx.globalAlpha=Math.min(0.34,Math.abs(S.flash));
+    ctx.fillStyle=S.flash>0?"#ff4d5e":T.c;
+    ctx.fillRect(-30,-30,W+60,H+60); ctx.globalAlpha=1;
+  }
+
+  text("NERVE",W/2,50,30,"#e9edf5");
+  text("BEST  "+best,W/2,78,15,"#6b7280");
+
+  // apna mute button sirf YouTube ke bahar - YouTube par wahan ka control chalega
+  if(!IN_YT){
+    rr(SND.x,SND.y,SND.w,SND.h,15);
+    ctx.fillStyle=audioAllowed()?"rgba(34,211,166,0.16)":"#141824"; ctx.fill();
+    ctx.beginPath(); ctx.arc(SND.x+17,SND.y+15,5,0,Math.PI*2);
+    ctx.fillStyle=audioAllowed()?"#22d3a6":"#3a3f4c"; ctx.fill();
+    text(audioAllowed()?"MUSIC":"MUTED",SND.x+50,SND.y+15,11,audioAllowed()?"#22d3a6":"#4b5563");
+  }
+
+  ctx.font="bold 13px 'Trebuchet MS', Verdana, sans-serif";
+  var bw=ctx.measureText(T.name).width+34;
+  rr(W/2-bw/2,94,bw,26,13); ctx.fillStyle=T.glow+"0.18)"; ctx.fill();
+  text(T.name,W/2,107,13,T.c);
+
+  drawChar(W/2,200);
+
+  ctx.save();
+  ctx.translate(W/2,BAR.y); ctx.scale(S.zoom,S.zoom); ctx.translate(-W/2,-BAR.y);
+
+  text("AT RISK",W/2,272,15,"#6b7280");
+  text(String(S.pot),W/2,318,74*(1+S.popT*0.22),S.pot>0?T.c:"#1c2029");
+  if(S.chain>=2) text("PERFECT CHAIN x"+S.chain,W/2,352,13,"#ffd166");
+  text("BANKED  "+S.banked,W/2,372,19,"#22d3a6");
+  text("NEXT HIT  +"+S.level+"   (PERFECT +"+(S.level*2)+")",W/2,396,14,"#6b7280");
+
+  var mw=190,mx0=W/2-mw/2,frac=Math.max(0.02,S.zoneW/CFG.baseZone);
+  rr(mx0,417,mw,6,3); ctx.fillStyle="#161a26"; ctx.fill();
+  rr(mx0,417,mw*frac,6,3); ctx.fillStyle=T.c; ctx.fill();
+  text("ZONE",mx0-24,420,10,"#4b5563");
+
+  var bt=ctx.createLinearGradient(BAR.x,0,BAR.x+BAR.w,0);
+  bt.addColorStop(0.00,"#252f5c"); bt.addColorStop(0.25,"#1c5573");
+  bt.addColorStop(0.50,"#1a6b56"); bt.addColorStop(0.75,"#6b5a1a");
+  bt.addColorStop(1.00,"#6b2340");
+  rr(BAR.x,BAR.y,BAR.w,BAR.h,14); ctx.fillStyle=bt; ctx.fill();
+  ctx.save(); ctx.clip();
+  ctx.strokeStyle="rgba(255,255,255,0.05)";
+  for(var k=1;k<12;k++){ var tx=BAR.x+BAR.w*(k/12);
+    ctx.beginPath(); ctx.moveTo(tx,BAR.y); ctx.lineTo(tx,BAR.y+BAR.h); ctx.stroke(); }
+  ctx.restore();
+
+  var zx=BAR.x+S.zoneA*BAR.w, zw=Math.max(4,S.zoneW*BAR.w);
+  var pulse=1+Math.sin(TT*6)*(S.zoneW<0.07?0.5:0.18);
+  ctx.save();
+  ctx.shadowColor=S.alive?T.c:"#000"; ctx.shadowBlur=(S.alive?26:0)*pulse;
+  rr(zx,BAR.y+3,zw,BAR.h-6,7); ctx.fillStyle=S.alive?T.c:"#33384a"; ctx.fill();
+  ctx.restore();
+  if(S.alive){
+    var pw2=zw*CFG.perfectBand*2;
+    rr(zx+zw/2-pw2/2,BAR.y+3,Math.max(2,pw2),BAR.h-6,4);
+    ctx.fillStyle="rgba(255,255,255,0.92)"; ctx.fill();
+    rr(zx,BAR.y+3,zw,BAR.h-6,7);
+    ctx.strokeStyle="rgba(255,255,255,0.85)"; ctx.lineWidth=2; ctx.stroke();
+  }
+
+  var mkx=BAR.x+S.pos*BAR.w;
+  if(S.alive){
+    for(var g=5;g>=1;g--){
+      var gxx=mkx-S.dir*g*7*(S.speed/2);
+      ctx.globalAlpha=0.10*(6-g)/5;
+      ctx.fillStyle="#ffffff"; ctx.fillRect(gxx-2,BAR.y-10,4,BAR.h+20);
+    }
+    ctx.globalAlpha=1;
+  }
+  ctx.save(); ctx.shadowColor="#ffffff"; ctx.shadowBlur=16;
+  ctx.fillStyle="#ffffff"; ctx.fillRect(mkx-2.5,BAR.y-15,5,BAR.h+30);
+  ctx.restore();
+
+  if(!S.alive && S.missGap>0){
+    var edge=(S.missPos<S.zoneA)?(BAR.x+S.zoneA*BAR.w):(BAR.x+(S.zoneA+S.zoneW)*BAR.w);
+    var gy2=BAR.y+BAR.h+18;
+    ctx.setLineDash([4,4]); ctx.strokeStyle="#ff4d5e"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(mkx,gy2); ctx.lineTo(edge,gy2); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(mkx,gy2-5); ctx.lineTo(mkx,gy2+5);
+    ctx.moveTo(edge,gy2-5); ctx.lineTo(edge,gy2+5); ctx.stroke();
+  }
+  ctx.restore();
+
+  for(var q=0;q<parts.length;q++){
+    var pp=parts[q];
+    ctx.globalAlpha=Math.max(0,pp.life); ctx.fillStyle=pp.col;
+    ctx.beginPath(); ctx.arc(pp.x,pp.y,pp.r*pp.life,0,Math.PI*2); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+  for(var z=0;z<pops.length;z++){
+    var oo=pops[z];
+    ctx.globalAlpha=Math.min(1,oo.life*1.4);
+    text(oo.txt,oo.x,oo.y,oo.size,oo.col);
+  }
+  ctx.globalAlpha=1;
+
+  if(S.msgT>0){
+    ctx.globalAlpha=Math.min(1,S.msgT/0.5);
+    text(S.msg,W/2,552,26,S.alive?T.c:"#ff4d5e");
+    if(S.msgSub) text(S.msgSub,W/2,576,14,"#9ca3af");
+    ctx.globalAlpha=1;
+  }
+
+  var can=S.alive&&S.pot>0;
+  ctx.save();
+  if(can){ ctx.shadowColor="#22d3a6"; ctx.shadowBlur=18+beat*14; }
+  rr(CASH.x,CASH.y,CASH.w,CASH.h,16);
+  ctx.fillStyle=can?"#22d3a6":"#141824"; ctx.fill();
+  ctx.restore();
+  text(can?("CASH OUT  "+S.pot):"CASH OUT",CASH.x+CASH.w/2,CASH.y+CASH.h/2,19,can?"#062018":"#3a3f4c");
+
+  var pips=20,pw=11,gap=4,tot=pips*pw+(pips-1)*gap,sx0=W/2-tot/2;
+  for(var n=0;n<pips;n++){
+    rr(sx0+n*(pw+gap),688,pw,5,2.5);
+    ctx.fillStyle=(n<Math.min(S.level-1,pips))?T.c:"#161a26"; ctx.fill();
+  }
+
+  var hintA=(idleT>4&&S.alive&&S.pot===0)?(0.5+Math.sin(TT*4)*0.5):1;
+  ctx.globalAlpha=0.55+hintA*0.45;
+  text(S.alive?"TAP / SPACE  -  STOP THE LINE":"TAP TO TRY AGAIN",W/2,738,15,"#6b7280");
+  ctx.globalAlpha=1;
+
+  if(S.mileT>0){
+    var a=Math.min(1,S.mileT/0.6);
+    ctx.globalAlpha=a*0.75;
+    ctx.fillStyle="#05060a"; ctx.fillRect(0,215,W,90);
+    ctx.globalAlpha=a;
+    text(S.mile,W/2,248,36,T.c);
+    text("LEVEL "+S.mileLv,W/2,282,15,"#e9edf5");
+    ctx.globalAlpha=1;
+  }
+
+  var vig=ctx.createRadialGradient(W/2,H/2,H*0.34,W/2,H/2,H*0.78);
+  vig.addColorStop(0,"rgba(0,0,0,0)"); vig.addColorStop(1,"rgba(0,0,0,0.55)");
+  ctx.fillStyle=vig; ctx.fillRect(0,0,W,H);
+
+  if(TS<0.7){
+    ctx.globalAlpha=(0.7-TS)*0.35;
+    ctx.fillStyle="#38bdf8"; ctx.fillRect(0,0,W,H); ctx.globalAlpha=1;
+  }
+
+  // save/load ke dauran chhota overlay (yehi "loading screen" hai)
+  if(!dataReady){
+    ctx.fillStyle="rgba(5,6,10,0.88)"; ctx.fillRect(0,0,W,H);
+    text("NERVE",W/2,H/2-26,30,"#e9edf5");
+    text("LOADING",W/2,H/2+16,16,"#6b7280");
+  }
+
+  ctx.restore();
+
+  /* ---- SDK HANDSHAKE ----
+     Tarteeb lazmi hai: pehla frame ban gaya -> firstFrameReady(),
+     phir save load ho gaya aur game khelne ke qabil hai -> gameReady(). */
+  if(!firstFrameSent){ firstFrameSent=true; ytFirstFrame(); loadSave(); }
+  tryGameReady();
+
+  if(savePending){ saveTimer-=raw; if(saveTimer<=0) saveNow(); }
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+})();
+</script>
+<script>
+/* Service worker = offline support + "Install app" prompt.
+   Sirf http/https par chalta hai. file:// par browser isay block
+   karta hai - isi liye app install karne ke liye hosting zaroori hai. */
+if("serviceWorker" in navigator && location.protocol.indexOf("http") === 0){
+  window.addEventListener("load", function(){
+    navigator.serviceWorker.register("sw.js").catch(function(){});
+  });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "appId": "com.playnerve.game",
+  "appName": "NERVE",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": false,
+    "backgroundColor": "#05060a"
+  },
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#05060a"
+  }
+}

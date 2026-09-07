@@ -2720,13 +2720,13 @@ function drawHeader(uncached){
   /* Divider line between coins and hearts */
   ctx.strokeStyle = "rgba(117,137,170,0.22)"; ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(HUD_LEFT + 8, 51 + HUD_TOP_PAD);
-  ctx.lineTo(HUD_LEFT + HUD_COIN_W - 8, 51 + HUD_TOP_PAD);
+  ctx.moveTo(HUD_LEFT + 6, 51 + HUD_TOP_PAD);
+  ctx.lineTo(HUD_LEFT + HUD_COIN_W - 6, 51 + HUD_TOP_PAD);
   ctx.stroke();
 
   /* Coins above the hearts on the left side. */
   ctx.save();
-  var coinX = HUD_LEFT + 14, coinY = 34 + HUD_TOP_PAD;
+  var coinX = HUD_LEFT + 12, coinY = 34 + HUD_TOP_PAD;
   ctx.beginPath();
   for (var corner = 0; corner < 6; corner++) {
     var angle = corner * Math.PI / 3 - Math.PI / 2;
@@ -2736,12 +2736,11 @@ function drawHeader(uncached){
   ctx.closePath(); ctx.fillStyle = "#332b19"; ctx.fill();
   ctx.strokeStyle = "#ffd166"; ctx.lineWidth = 1.4; ctx.stroke();
   text("N", coinX, coinY, 8, "#ffe8a3", "center", 0);
-  text(String(wallet), HUD_LEFT + 26, coinY, IS_MOBILE ? 12 : 13, "#f0f9ff", "left", 0);
+  text(String(wallet), HUD_LEFT + 24, coinY, IS_MOBILE ? 12 : 13, "#f0f9ff", "left", 0);
   ctx.restore();
 
-  /* 3 hearts below the coins, centered in HUD_COIN_W */
-  var heartsSpan = 70;
-  var heartsStartX = HUD_LEFT + Math.round((HUD_COIN_W - heartsSpan) / 2);
+  /* 3 hearts below the coins, moved to the left */
+  var heartsStartX = HUD_LEFT + 6;
   for (i = 0; i < CFG.lives; i++) {
     var lifeBoxX = heartsStartX + i * 25;
     var lifeX = lifeBoxX + 10;

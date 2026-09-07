@@ -1016,21 +1016,21 @@ var TRACK_FRAME = null;
 var POWER_ICON_FRAMES = {};
 var ZONE_FRAME = null, NEEDLE_FRAME = null;
 var EFFECT_FRAMES = new Map();
-var HUD_LEFT = 34;
+var HUD_LEFT = 8;
 var MOBILE_CROP_X = 0;
-var HUD_TOP_PAD = 0;
-var HUD_COIN_W = 116, HUD_LIVES_W = 105;
+var HUD_TOP_PAD = 4;
+var HUD_COIN_W = 86, HUD_LIVES_W = 86;
 
-var SND   = { x:338, y:26,  w:78,  h:28 };
+var SND   = { x:368, y:20,  w:74,  h:28 };
 var CASH  = { x:45,  y:640, w:168, h:62 };
 var SHOPB = { x:223, y:640, w:88,  h:62 };
 var LEVB  = { x:321, y:640, w:84,  h:62 };
 var LBACK = { x:125, y:714, w:200, h:52 };
 var POWER_BTNS = [
-  { id:"slow",   x:4, y:108, w:58, h:58 },
-  { id:"shield", x:4, y:168, w:58, h:58 },
-  { id:"double", x:4, y:228, w:58, h:58 },
-  { id:"revive", x:4, y:288, w:58, h:58 }
+  { id:"slow",   x:14, y:102, w:74, h:54 },
+  { id:"shield", x:14, y:162, w:74, h:54 },
+  { id:"double", x:14, y:222, w:74, h:54 },
+  { id:"revive", x:14, y:282, w:74, h:54 }
 ];
 
 function powerButtonBox(source){
@@ -1164,24 +1164,26 @@ function resize(){
   var sc = IS_MOBILE ? Math.max(vw / W, vh / H) : Math.min(vw / W, vh / H);
   /* Match the enlarged CSS canvas with a high-density backing store. */
   var dpr = Math.min((window.devicePixelRatio || 1) * sc, 3);
+  var sidebarW = 86;
+  var btnW = 74, btnH = 54, btnGap = 6;
   if (IS_MOBILE) {
     MOBILE_CROP_X = Math.max(0, (W - vw / sc) / 2);
     var sideX = Math.ceil(MOBILE_CROP_X + 12);
-    HUD_LEFT = MOBILE_CROP_X + 2;
-    HUD_TOP_PAD = 10;
-    HUD_COIN_W = 92; HUD_LIVES_W = 92;
+    HUD_LEFT = Math.round(MOBILE_CROP_X);
+    HUD_TOP_PAD = 8;
+    HUD_COIN_W = sidebarW; HUD_LIVES_W = sidebarW;
     SND.w = 70;
     SND.x = W - sideX - SND.w;
-    SND.y = 26 + HUD_TOP_PAD;
+    SND.y = 16 + HUD_TOP_PAD;
     /* Keep the thick track and its glow inside the visible phone safe area. */
-    /* Reserve a clear lane for the left power toolbar. */
-    A.x0 = Math.max(45, sideX + 28);
-    A.x1 = W - sideX - 28;
+    A.x0 = Math.max(38, sideX + 16);
+    A.x1 = W - sideX - 16;
     A.y0 = 378; A.y1 = 562;
+    var pTop = 84 + HUD_TOP_PAD + 8;
     POWER_BTNS.forEach(function(button, index){
-      button.w = 58; button.h = 58;
-      button.x = MOBILE_CROP_X + 2;
-      button.y = 108 + index * 60;
+      button.w = btnW; button.h = btnH;
+      button.x = HUD_LEFT + Math.round((sidebarW - btnW) / 2);
+      button.y = pTop + 6 + index * (btnH + btnGap);
     });
     var actionGap = 9, actionLeft = sideX, actionRight = W - sideX;
     var actionSpace = actionRight - actionLeft - actionGap * 2;
@@ -1189,12 +1191,19 @@ function resize(){
     SHOPB.x = CASH.x + CASH.w + actionGap; SHOPB.w = actionSpace * 0.26;
     LEVB.x = SHOPB.x + SHOPB.w + actionGap; LEVB.w = actionRight - LEVB.x;
   } else {
-    MOBILE_CROP_X = 0; HUD_LEFT = 34; HUD_TOP_PAD = 0;
-    HUD_COIN_W = 116; HUD_LIVES_W = 105; SND.x = 338; SND.y = 26;
-    SND.w = 78;
+    MOBILE_CROP_X = 0;
+    HUD_LEFT = 0;
+    HUD_TOP_PAD = 4;
+    HUD_COIN_W = sidebarW; HUD_LIVES_W = sidebarW;
+    SND.w = 74;
+    SND.x = W - 8 - SND.w;
+    SND.y = 16 + HUD_TOP_PAD;
     A.x0 = 45; A.x1 = 405; A.y0 = 378; A.y1 = 562;
+    var pTop = 84 + HUD_TOP_PAD + 8;
     POWER_BTNS.forEach(function(button, index){
-      button.x = 4; button.y = 108 + index * 60; button.w = 58; button.h = 58;
+      button.w = btnW; button.h = btnH;
+      button.x = HUD_LEFT + Math.round((sidebarW - btnW) / 2);
+      button.y = pTop + 6 + index * (btnH + btnGap);
     });
     CASH.x = 45; CASH.w = 168;
     SHOPB.x = 223; SHOPB.w = 88;
@@ -2615,8 +2624,9 @@ function drawPowerButtons(uncached){
   if (IS_MOBILE && !uncached) {
     var ready = POWERS.every(function(p){ var img = getImg(p.src); return img.complete && img.naturalWidth > 0; });
     var first = powerButtonBox(POWER_BTNS[0]), lastPowerBox = powerButtonBox(POWER_BTNS[POWER_BTNS.length - 1]);
-    var left = MOBILE_CROP_X - 20, top = first.y - 24;
-    var width = first.w + 50, height = lastPowerBox.y + lastPowerBox.h - top + 24;
+    var railX = HUD_LEFT, railW = HUD_COIN_W;
+    var left = railX - 12, top = first.y - 18;
+    var width = railW + 24, height = lastPowerBox.y + lastPowerBox.h - top + 18;
     var key = 'powers:' + JSON.stringify(POWER_STOCK) + ':' + [S.slowHits,S.doubleHits,S.shieldActive,S.reviveActive,ready,left,top,width,height].join(':');
     drawEffectSprite(key, left + width/2, top + height/2, width, height, function(){
       ctx.translate(-left - width/2, -top - height/2);
@@ -2625,16 +2635,19 @@ function drawPowerButtons(uncached){
     return;
   }
   var i, b, power, active, activeText, bg;
-  if (IS_MOBILE) {
-    var firstPower = powerButtonBox(POWER_BTNS[0]);
-    var lastPower = powerButtonBox(POWER_BTNS[POWER_BTNS.length - 1]);
-    ctx.save();
-    rr(MOBILE_CROP_X, firstPower.y - 5,
-       firstPower.w + 5, lastPower.y + lastPower.h - firstPower.y + 10, 8);
-    ctx.fillStyle = "rgba(5,8,17,0.55)"; ctx.fill();
-    ctx.strokeStyle = "rgba(117,137,170,0.20)"; ctx.lineWidth = 1; ctx.stroke();
-    ctx.restore();
-  }
+  var firstPower = powerButtonBox(POWER_BTNS[0]);
+  var lastPower = powerButtonBox(POWER_BTNS[POWER_BTNS.length - 1]);
+  var railX = HUD_LEFT, railW = HUD_COIN_W;
+  var railTop = firstPower.y - 6;
+  var railH = (lastPower.y + lastPower.h) - railTop + 6;
+
+  /* Sleek glass background rail enclosing all power buttons in a column */
+  ctx.save();
+  rr(railX, railTop, railW, railH, 10);
+  ctx.fillStyle = "rgba(5,8,17,0.60)"; ctx.fill();
+  ctx.strokeStyle = "rgba(117,137,170,0.20)"; ctx.lineWidth = 1; ctx.stroke();
+  ctx.restore();
+
   for (i = 0; i < POWER_BTNS.length; i++) {
     b = powerButtonBox(POWER_BTNS[i]);
     power = POWERS.filter(function(p){ return p.id === b.id; })[0];
@@ -2645,25 +2658,25 @@ function drawPowerButtons(uncached){
     activeText = b.id === "slow" ? S.slowHits : (b.id === "double" ? S.doubleHits : (active ? 1 : 0));
 
     ctx.save();
-    rr(b.x, b.y, b.w, b.h, 12);
+    rr(b.x, b.y, b.w, b.h, 10);
     bg = ctx.createLinearGradient(b.x, b.y, b.x, b.y + b.h);
     bg.addColorStop(0, active ? "#182a38" : "#121a29");
     bg.addColorStop(1, "#050811");
     ctx.fillStyle = bg; ctx.fill();
     ctx.strokeStyle = active ? power.col : (POWER_STOCK[b.id] > 0 ? power.col : "#303a4c");
     ctx.globalAlpha = active ? 1 : (POWER_STOCK[b.id] > 0 ? 0.72 : 0.48);
-    ctx.lineWidth = active ? 2.8 : 1.6;
+    ctx.lineWidth = active ? 2.5 : 1.5;
     if (active || POWER_STOCK[b.id] > 0) { ctx.shadowColor = power.col; ctx.shadowBlur = active ? 16 : 7; }
     ctx.stroke(); ctx.shadowBlur = 0;
     ctx.globalAlpha = POWER_STOCK[b.id] > 0 || active ? 1 : 0.55;
-    drawPowerIcon(b.id, b.x + b.w/2, b.y + b.h * 0.36, IS_MOBILE ? 29 : 35, power.col);
+    drawPowerIcon(b.id, b.x + b.w/2, b.y + b.h * 0.36, IS_MOBILE ? 27 : 29, power.col);
 
-    /* High-contrast quantity/active badge instead of tiny footer text. */
+    /* High-contrast quantity/active badge */
     ctx.globalAlpha = 1;
-    rr(b.x + 7, b.y + b.h - 18, b.w - 14, 14, 7);
+    rr(b.x + 6, b.y + b.h - 17, b.w - 12, 13, 6);
     ctx.fillStyle = active ? power.col : "#202a3b"; ctx.fill();
     text(active ? ("ON " + activeText) : ("x" + POWER_STOCK[b.id]),
-         b.x + b.w/2, b.y + b.h - 11, 9, active ? "#05060a" : "#ffffff", "center", 0);
+         b.x + b.w/2, b.y + b.h - 10.5, 9, active ? "#05060a" : "#ffffff", "center", 0);
     ctx.restore();
   }
 }
@@ -2695,26 +2708,25 @@ function drawHeader(uncached){
   }
 
   /* One compact glass HUD panel keeps coins and lives visually grouped. */
-  rr(HUD_LEFT, 19 + HUD_TOP_PAD, HUD_COIN_W, IS_MOBILE ? 69 : 34, 8);
-  var hudFill = ctx.createLinearGradient(HUD_LEFT, 19 + HUD_TOP_PAD, HUD_LEFT, 88 + HUD_TOP_PAD);
+  rr(HUD_LEFT, 16 + HUD_TOP_PAD, HUD_COIN_W, 68, 10);
+  var hudFill = ctx.createLinearGradient(HUD_LEFT, 16 + HUD_TOP_PAD, HUD_LEFT, 84 + HUD_TOP_PAD);
   hudFill.addColorStop(0, "rgba(13,35,51,0.96)");
   hudFill.addColorStop(1, "rgba(5,14,29,0.96)");
   ctx.fillStyle = hudFill; ctx.fill();
   ctx.strokeStyle = "rgba(85,210,239,0.40)"; ctx.lineWidth = 1; ctx.stroke();
   ctx.fillStyle = "#61def1";
-  rr(HUD_LEFT + 12, 19 + HUD_TOP_PAD, 24, 2, 1); ctx.fill();
-  if (IS_MOBILE) {
-    ctx.strokeStyle = "rgba(117,137,170,0.22)"; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(HUD_LEFT + 10, 58 + HUD_TOP_PAD); ctx.lineTo(HUD_LEFT + HUD_COIN_W - 10, 58 + HUD_TOP_PAD); ctx.stroke();
-  } else {
-    rr(HUD_LEFT, 60 + HUD_TOP_PAD, HUD_LIVES_W, 28, 12);
-    ctx.fillStyle = "rgba(9,14,25,0.74)"; ctx.fill();
-    ctx.strokeStyle = "rgba(117,137,170,0.25)"; ctx.lineWidth = 1; ctx.stroke();
-  }
+  rr(HUD_LEFT + 12, 16 + HUD_TOP_PAD, 24, 2, 1); ctx.fill();
+
+  /* Divider line between coins and hearts */
+  ctx.strokeStyle = "rgba(117,137,170,0.22)"; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(HUD_LEFT + 8, 51 + HUD_TOP_PAD);
+  ctx.lineTo(HUD_LEFT + HUD_COIN_W - 8, 51 + HUD_TOP_PAD);
+  ctx.stroke();
 
   /* Coins above the hearts on the left side. */
   ctx.save();
-  var coinX = HUD_LEFT + 15, coinY = 40 + HUD_TOP_PAD;
+  var coinX = HUD_LEFT + 14, coinY = 34 + HUD_TOP_PAD;
   ctx.beginPath();
   for (var corner = 0; corner < 6; corner++) {
     var angle = corner * Math.PI / 3 - Math.PI / 2;
@@ -2724,22 +2736,25 @@ function drawHeader(uncached){
   ctx.closePath(); ctx.fillStyle = "#332b19"; ctx.fill();
   ctx.strokeStyle = "#ffd166"; ctx.lineWidth = 1.4; ctx.stroke();
   text("N", coinX, coinY, 8, "#ffe8a3", "center", 0);
-  text(String(wallet), HUD_LEFT + 28, coinY, IS_MOBILE ? 12 : 14, "#f0f9ff", "left", 0);
+  text(String(wallet), HUD_LEFT + 26, coinY, IS_MOBILE ? 12 : 13, "#f0f9ff", "left", 0);
   ctx.restore();
 
-  /* 3 dil - yeh naya hai */
+  /* 3 hearts below the coins, centered in HUD_COIN_W */
+  var heartsSpan = 70;
+  var heartsStartX = HUD_LEFT + Math.round((HUD_COIN_W - heartsSpan) / 2);
   for (i = 0; i < CFG.lives; i++) {
-    var lifeX = HUD_LEFT + 17 + i * (IS_MOBILE ? 25 : 27);
-    rr(lifeX - 10, 62 + HUD_TOP_PAD, 20, 20, 5);
+    var lifeBoxX = heartsStartX + i * 25;
+    var lifeX = lifeBoxX + 10;
+    rr(lifeBoxX, 56 + HUD_TOP_PAD, 20, 20, 5);
     ctx.fillStyle = i < S.lives ? "rgba(255,77,141,0.12)" : "rgba(102,113,136,0.10)"; ctx.fill();
     ctx.strokeStyle = i < S.lives ? "rgba(255,110,158,0.30)" : "rgba(102,113,136,0.20)";
     ctx.lineWidth = 0.7; ctx.stroke();
-    drawHeart(lifeX, 75 + HUD_TOP_PAD, IS_MOBILE ? 8 : 9, i < S.lives, true);
+    drawHeart(lifeX, 66 + HUD_TOP_PAD, 8.5, i < S.lives, true);
   }
 
   text("BEST " + best, 225, 76 + HUD_TOP_PAD, 13, "#ffffff", "center", 1);
 
-  var bw = IS_MOBILE ? Math.min(260, W - MOBILE_CROP_X * 2 - 140) : 260;
+  var bw = IS_MOBILE ? Math.min(230, W - MOBILE_CROP_X * 2 - 150) : 230;
   var bannerCx = W / 2, bannerLeft = bannerCx - bw / 2;
   rr(bannerLeft, 96 + HUD_TOP_PAD, bw, 26, 13);
   ctx.fillStyle = T.glow + "0.13)"; ctx.fill();

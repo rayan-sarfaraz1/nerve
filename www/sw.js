@@ -4,7 +4,7 @@
 
    Game update karne ke baad CACHE ka number barha dena, warna
    phone purani copy hi dikhata rahega. */
-var CACHE = "nerve-v30-responsive-taps";
+var CACHE = "nerve-v31-left-column-powers";
 var FILES = [
   "./",
   "./index.html",

@@ -2893,8 +2893,10 @@ function drawHeader(uncached){
 
   text("BEST " + best, 225, 76 + HUD_TOP_PAD, 13, "#ffffff", "center", 1);
 
-  var bw = IS_MOBILE ? Math.min(230, W - MOBILE_CROP_X * 2 - 150) : 230;
-  var bannerCx = W / 2, bannerLeft = bannerCx - bw / 2;
+  var bw = IS_MOBILE ? Math.min(230, W - MOBILE_CROP_X * 2 - 100) : 230;
+  var minLeft = HUD_LEFT + HUD_COIN_W + 12;
+  var bannerLeft = Math.max(minLeft, W / 2 - bw / 2);
+  var bannerCx = bannerLeft + bw / 2;
   rr(bannerLeft, 96 + HUD_TOP_PAD, bw, 26, 13);
   ctx.fillStyle = T.glow + "0.13)"; ctx.fill();
   ctx.strokeStyle = T.glow + "0.50)"; ctx.lineWidth = 1; ctx.stroke();

@@ -990,7 +990,7 @@ function stopLine(){
       queueSave();
     } else if (S.lives <= 0) {
       S.lives = 0;
-      if (!adReviveUsed && NATIVE_SHELL) {
+      if (!adReviveUsed) {
         S.phase = "ad_revive";
       } else {
         gameOver();

@@ -158,6 +158,9 @@ var AdManager = {
 
 var AD_REVIVE_BTN_WATCH = { x: 65, y: 440, w: 160, h: 48 };
 var AD_REVIVE_BTN_NO    = { x: 235, y: 440, w: 150, h: 48 };
+var AD_POWER_BTN_WATCH  = { x: 65, y: 440, w: 160, h: 48 };
+var AD_POWER_BTN_NO     = { x: 235, y: 440, w: 150, h: 48 };
+var adPowerId = null;
 
 function logErr(){  try { if (IN_YT && YT.health) YT.health.logError();   } catch(e){} }
 function logWarn(){ try { if (IN_YT && YT.health) YT.health.logWarning(); } catch(e){} }
@@ -1118,8 +1121,13 @@ function toLocal(src){
 function hitBox(p, b){ return p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h; }
 
 function activatePower(id){
-  if (S.phase === "over" || S.phase === "miss" || S.phase === "ad_revive") { say("NOT RIGHT NOW", "START OR CONTINUE THE RUN"); sfxDeny(); return; }
-  if (POWER_STOCK[id] <= 0) { say("NO " + id.toUpperCase(), "BUY IT IN THE SHOP"); sfxDeny(); buzz(35); return; }
+  if (S.phase === "over" || S.phase === "miss" || S.phase === "ad_revive" || S.phase === "ad_power") { say("NOT RIGHT NOW", "START OR CONTINUE THE RUN"); sfxDeny(); return; }
+  if (POWER_STOCK[id] <= 0) {
+    /* Offer to watch an ad for 1 free power */
+    adPowerId = id;
+    S.phase = "ad_power";
+    return;
+  }
   if ((id === "slow" && S.slowHits > 0) ||
       (id === "double" && S.doubleHits > 0) ||
       (id === "shield" && S.shieldActive) ||
@@ -1187,6 +1195,38 @@ function press(e){
   }
 
   if (hitBox(p, LEVB)) { S.screen = "levels"; sfxOpen(); return; }
+
+  /* Ad Power popup buttons */
+  if (S.phase === "ad_power") {
+    if (hitBox(p, AD_POWER_BTN_WATCH)) {
+      var powId = adPowerId;
+      AdManager.showRewarded(
+        function() {
+          /* Reward earned - give 1 power */
+          POWER_STOCK[powId]++;
+          S.phase = "run";
+          say(powId.toUpperCase() + " +1", "FREE FROM AD");
+          sfxCash(); buzz([12,20,12]);
+          queueSave();
+          adPowerId = null;
+        },
+        function() {
+          /* Ad dismissed without reward */
+          S.phase = "run";
+          say("NO " + powId.toUpperCase(), "BUY IT IN THE SHOP");
+          adPowerId = null;
+        }
+      );
+      return;
+    }
+    if (hitBox(p, AD_POWER_BTN_NO)) {
+      S.phase = "run";
+      say("NO " + adPowerId.toUpperCase(), "BUY IT IN THE SHOP");
+      adPowerId = null;
+      return;
+    }
+    return;
+  }
 
   /* Ad Revive popup buttons */
   if (S.phase === "ad_revive") {
@@ -3008,6 +3048,41 @@ function drawGame(){
     text(S.mile, 225, 250, 30, T.col, "center", 4);
     if (S.mileSub) text(S.mileSub, 225, 282, 13, "#e9edf5", "center", 3);
     ctx.globalAlpha = 1;
+  }
+
+  /* Ad Power Popup */
+  if (S.phase === "ad_power" && adPowerId) {
+    var adPower = POWERS.filter(function(p){ return p.id === adPowerId; })[0];
+    var adPowerCol = adPower ? adPower.col : "#ffd166";
+    ctx.fillStyle = "rgba(5,6,10,0.80)";
+    ctx.fillRect(0, 0, W, H);
+    rr(40, 340, W - 80, 180, 18);
+    var powerPopBg = ctx.createLinearGradient(40, 340, 40, 520);
+    powerPopBg.addColorStop(0, "rgba(15,22,40,0.98)");
+    powerPopBg.addColorStop(1, "rgba(5,8,16,0.98)");
+    ctx.fillStyle = powerPopBg; ctx.fill();
+    ctx.strokeStyle = adPowerCol; ctx.lineWidth = 2; ctx.stroke();
+    ctx.save();
+    ctx.shadowColor = adPowerCol; ctx.shadowBlur = 18;
+    text("NO " + adPowerId.toUpperCase(), 225, 372, 22, adPowerCol, "center", 2);
+    ctx.restore();
+    text("Watch a short video to", 225, 402, 12, "#ffffff", "center", 1);
+    text("get 1 free " + adPowerId + "!", 225, 420, 12, adPowerCol, "center", 1);
+    /* WATCH AD button */
+    rr(AD_POWER_BTN_WATCH.x, AD_POWER_BTN_WATCH.y, AD_POWER_BTN_WATCH.w, AD_POWER_BTN_WATCH.h, 14);
+    var pwWatchGrad = ctx.createLinearGradient(AD_POWER_BTN_WATCH.x, AD_POWER_BTN_WATCH.y, AD_POWER_BTN_WATCH.x, AD_POWER_BTN_WATCH.y + AD_POWER_BTN_WATCH.h);
+    pwWatchGrad.addColorStop(0, adPowerCol);
+    pwWatchGrad.addColorStop(1, "#0f6b5a");
+    ctx.fillStyle = pwWatchGrad; ctx.fill();
+    ctx.save();
+    ctx.shadowColor = adPowerCol; ctx.shadowBlur = 14;
+    text("WATCH AD", AD_POWER_BTN_WATCH.x + AD_POWER_BTN_WATCH.w/2, AD_POWER_BTN_WATCH.y + AD_POWER_BTN_WATCH.h/2, 15, "#050811", "center", 2);
+    ctx.restore();
+    /* NO THANKS button */
+    rr(AD_POWER_BTN_NO.x, AD_POWER_BTN_NO.y, AD_POWER_BTN_NO.w, AD_POWER_BTN_NO.h, 14);
+    ctx.fillStyle = "rgba(15,20,30,0.80)"; ctx.fill();
+    ctx.strokeStyle = "#465268"; ctx.lineWidth = 1.5; ctx.stroke();
+    text("NO THANKS", AD_POWER_BTN_NO.x + AD_POWER_BTN_NO.w/2, AD_POWER_BTN_NO.y + AD_POWER_BTN_NO.h/2, 13, "#9ca3af", "center", 1);
   }
 
   /* Ad Revive Popup */

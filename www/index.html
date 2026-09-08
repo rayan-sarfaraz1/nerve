@@ -86,6 +86,20 @@ var IS_MOBILE = IS_NATIVE ||
   /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
 if (IS_NATIVE) document.documentElement.classList.add("native-app");
 
+/* Mobile Performance Optimization: Cap shadowBlur to prevent severe GPU lag on low-end devices */
+if (IS_MOBILE) {
+  var originalShadowBlur = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, 'shadowBlur');
+  if (originalShadowBlur && originalShadowBlur.set) {
+    Object.defineProperty(CanvasRenderingContext2D.prototype, 'shadowBlur', {
+      set: function(val) {
+        /* Cap the max blur radius to 5. This preserves the neon effect but removes the expensive massive gaussian blur passes. */
+        originalShadowBlur.set.call(this, Math.min(val, 5));
+      },
+      get: function() { return originalShadowBlur.get.call(this); }
+    });
+  }
+}
+
 var firstFrameSent = false, gameReadySent = false, dataReady = false;
 var paused = false, ytAudioOK = true, userSound = true;
 var savePending = false, saveTimer = 0, lastSentScore = -1;

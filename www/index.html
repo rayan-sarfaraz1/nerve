@@ -1009,6 +1009,7 @@ function stopLine(){
       S.lives = 0;
       if (!adReviveUsed) {
         S.phase = "ad_revive";
+        S.popupTime = Date.now();
       } else {
         gameOver();
       }
@@ -1140,6 +1141,7 @@ function activatePower(id){
     /* Offer to watch an ad for 1 free power */
     adPowerId = id;
     S.phase = "ad_power";
+    S.popupTime = Date.now();
     return;
   }
   if ((id === "slow" && S.slowHits > 0) ||
@@ -1212,6 +1214,7 @@ function press(e){
 
   /* Ad Power popup buttons */
   if (S.phase === "ad_power") {
+    if (Date.now() - (S.popupTime || 0) < 600) return;
     if (hitBox(p, AD_POWER_BTN_WATCH)) {
       var powId = adPowerId;
       AdManager.showRewarded(
@@ -1244,6 +1247,7 @@ function press(e){
 
   /* Ad Revive popup buttons */
   if (S.phase === "ad_revive") {
+    if (Date.now() - (S.popupTime || 0) < 600) return;
     if (hitBox(p, AD_REVIVE_BTN_WATCH)) {
       AdManager.showRewarded(
         function() {

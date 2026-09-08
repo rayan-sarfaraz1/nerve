@@ -193,8 +193,8 @@ function applySave(txt){
   if (typeof d.best  === "number") best   = Math.max(best,   Math.floor(d.best));
   if (typeof d.bl    === "number") bestLevel = Math.max(bestLevel, Math.floor(d.bl));
   CFG.barStyle = "flat";
-  if (typeof d.coins === "number") wallet = Math.max(999999, Math.floor(d.coins));
-  else wallet = 999999;
+  if (typeof d.coins === "number") wallet = Math.max(0, Math.floor(d.coins));
+  else wallet = 0;
   if (d.own && d.own.length) for (i = 0; i < d.own.length; i++) OWNED[d.own[i]] = true;
   if (d.ch && findChar(d.ch)) charId = d.ch;
   if (d.ob && findObj(d.ob))  objId  = d.ob;
@@ -519,7 +519,7 @@ function getImg(src) {
   return img;
 }
 
-var best = 0, wallet = 999999, charId = "blob", objId = "bar", bgId = "alien", shapeId = "line";
+var best = 0, wallet = 0, charId = "blob", objId = "bar", bgId = "alien", shapeId = "line";
 var bestLevel = 0;   /* ab tak ka sab se ooncha level - LEVELS screen isi se unlock dikhati hai */
 var OWNED = { "char:blob": true, "obj:bar": true, "bg:alien": true, "shape:line": true };
 

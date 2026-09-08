@@ -92,8 +92,9 @@ if (IS_MOBILE) {
   if (originalShadowBlur && originalShadowBlur.set) {
     Object.defineProperty(CanvasRenderingContext2D.prototype, 'shadowBlur', {
       set: function(val) {
-        /* Cap the max blur radius to 5. This preserves the neon effect but removes the expensive massive gaussian blur passes. */
-        originalShadowBlur.set.call(this, Math.min(val, 5));
+        /* Cap the max blur radius to 0 to completely disable expensive gaussian blur passes on mobile. 
+           This guarantees 60FPS on low-end devices like MediaTek Helio P35 (Oppo A54). */
+        originalShadowBlur.set.call(this, Math.min(val, 0));
       },
       get: function() { return originalShadowBlur.get.call(this); }
     });
@@ -3273,7 +3274,7 @@ function drawLevels(){
     
     if (cur) { 
       text("EQUIPPED", b.x + 84, b.y + 55, 10, T.col, "left", 1);
-      text("PLAYING NOW", b.x + 84, b.y + 74, 9, T.col, "left", 2);
+      text("IN USE", b.x + 84, b.y + 74, 9, T.col, "left", 2);
     }
     else if (unlocked) { 
       text("TAP TO USE", b.x + 84, b.y + 55, 10, "#ffffff", "left", 1);

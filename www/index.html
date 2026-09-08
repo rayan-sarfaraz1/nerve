@@ -3052,25 +3052,33 @@ function drawGame(){
     ctx.globalAlpha = 1;
   }
 
+  var popLeft = IS_MOBILE ? Math.max(30, HUD_LEFT + HUD_COIN_W + 10) : 40;
+  var popRight = W - (IS_MOBILE ? Math.max(20, MOBILE_CROP_X) : 40);
+  var popW = popRight - popLeft;
+  var popCx = popLeft + popW / 2;
+  var popBtnW = Math.min(160, popW / 2 - 6);
+
   /* Ad Power Popup */
   if (S.phase === "ad_power" && adPowerId) {
     var adPower = POWERS.filter(function(p){ return p.id === adPowerId; })[0];
     var adPowerCol = adPower ? adPower.col : "#ffd166";
     ctx.fillStyle = "rgba(5,6,10,0.80)";
     ctx.fillRect(0, 0, W, H);
-    rr(40, 340, W - 80, 180, 18);
-    var powerPopBg = ctx.createLinearGradient(40, 340, 40, 520);
+    rr(popLeft, 340, popW, 180, 18);
+    var powerPopBg = ctx.createLinearGradient(popLeft, 340, popLeft, 520);
     powerPopBg.addColorStop(0, "rgba(15,22,40,0.98)");
     powerPopBg.addColorStop(1, "rgba(5,8,16,0.98)");
     ctx.fillStyle = powerPopBg; ctx.fill();
     ctx.strokeStyle = adPowerCol; ctx.lineWidth = 2; ctx.stroke();
     ctx.save();
     ctx.shadowColor = adPowerCol; ctx.shadowBlur = 18;
-    text("NO " + adPowerId.toUpperCase(), 225, 372, 22, adPowerCol, "center", 2);
+    text("NO " + adPowerId.toUpperCase(), popCx, 372, 22, adPowerCol, "center", 2);
     ctx.restore();
-    text("Watch a short video to", 225, 402, 12, "#ffffff", "center", 1);
-    text("get 1 free " + adPowerId + "!", 225, 420, 12, adPowerCol, "center", 1);
+    text("Watch a short video to", popCx, 402, 12, "#ffffff", "center", 1);
+    text("get 1 free " + adPowerId + "!", popCx, 420, 12, adPowerCol, "center", 1);
     /* WATCH AD button */
+    AD_POWER_BTN_WATCH.w = popBtnW;
+    AD_POWER_BTN_WATCH.x = popCx - popBtnW - 4;
     rr(AD_POWER_BTN_WATCH.x, AD_POWER_BTN_WATCH.y, AD_POWER_BTN_WATCH.w, AD_POWER_BTN_WATCH.h, 14);
     var pwWatchGrad = ctx.createLinearGradient(AD_POWER_BTN_WATCH.x, AD_POWER_BTN_WATCH.y, AD_POWER_BTN_WATCH.x, AD_POWER_BTN_WATCH.y + AD_POWER_BTN_WATCH.h);
     pwWatchGrad.addColorStop(0, adPowerCol);
@@ -3078,32 +3086,36 @@ function drawGame(){
     ctx.fillStyle = pwWatchGrad; ctx.fill();
     ctx.save();
     ctx.shadowColor = adPowerCol; ctx.shadowBlur = 14;
-    text("WATCH AD", AD_POWER_BTN_WATCH.x + AD_POWER_BTN_WATCH.w/2, AD_POWER_BTN_WATCH.y + AD_POWER_BTN_WATCH.h/2, 15, "#050811", "center", 2);
+    text("WATCH AD", AD_POWER_BTN_WATCH.x + AD_POWER_BTN_WATCH.w/2, AD_POWER_BTN_WATCH.y + AD_POWER_BTN_WATCH.h/2, 14, "#050811", "center", 2);
     ctx.restore();
     /* NO THANKS button */
+    AD_POWER_BTN_NO.w = popBtnW;
+    AD_POWER_BTN_NO.x = popCx + 4;
     rr(AD_POWER_BTN_NO.x, AD_POWER_BTN_NO.y, AD_POWER_BTN_NO.w, AD_POWER_BTN_NO.h, 14);
     ctx.fillStyle = "rgba(15,20,30,0.80)"; ctx.fill();
     ctx.strokeStyle = "#465268"; ctx.lineWidth = 1.5; ctx.stroke();
-    text("NO THANKS", AD_POWER_BTN_NO.x + AD_POWER_BTN_NO.w/2, AD_POWER_BTN_NO.y + AD_POWER_BTN_NO.h/2, 13, "#9ca3af", "center", 1);
+    text("NO THANKS", AD_POWER_BTN_NO.x + AD_POWER_BTN_NO.w/2, AD_POWER_BTN_NO.y + AD_POWER_BTN_NO.h/2, 12, "#9ca3af", "center", 1);
   }
 
   /* Ad Revive Popup */
   if (S.phase === "ad_revive") {
     ctx.fillStyle = "rgba(5,6,10,0.80)";
     ctx.fillRect(0, 0, W, H);
-    rr(40, 340, W - 80, 180, 18);
-    var reviveBg = ctx.createLinearGradient(40, 340, 40, 520);
+    rr(popLeft, 340, popW, 180, 18);
+    var reviveBg = ctx.createLinearGradient(popLeft, 340, popLeft, 520);
     reviveBg.addColorStop(0, "rgba(15,22,40,0.98)");
     reviveBg.addColorStop(1, "rgba(5,8,16,0.98)");
     ctx.fillStyle = reviveBg; ctx.fill();
     ctx.strokeStyle = "#ff4d8d"; ctx.lineWidth = 2; ctx.stroke();
     ctx.save();
     ctx.shadowColor = "#ff4d8d"; ctx.shadowBlur = 18;
-    text("0 LIVES LEFT", 225, 372, 22, "#ff4d5e", "center", 2);
+    text("0 LIVES LEFT", popCx, 372, 22, "#ff4d5e", "center", 2);
     ctx.restore();
-    text("Watch a short video to", 225, 402, 12, "#ffffff", "center", 1);
-    text("get 1 extra life!", 225, 420, 12, "#22d3a6", "center", 1);
+    text("Watch a short video to", popCx, 402, 12, "#ffffff", "center", 1);
+    text("get 1 extra life!", popCx, 420, 12, "#22d3a6", "center", 1);
     /* WATCH AD button */
+    AD_REVIVE_BTN_WATCH.w = popBtnW;
+    AD_REVIVE_BTN_WATCH.x = popCx - popBtnW - 4;
     rr(AD_REVIVE_BTN_WATCH.x, AD_REVIVE_BTN_WATCH.y, AD_REVIVE_BTN_WATCH.w, AD_REVIVE_BTN_WATCH.h, 14);
     var watchGrad = ctx.createLinearGradient(AD_REVIVE_BTN_WATCH.x, AD_REVIVE_BTN_WATCH.y, AD_REVIVE_BTN_WATCH.x, AD_REVIVE_BTN_WATCH.y + AD_REVIVE_BTN_WATCH.h);
     watchGrad.addColorStop(0, "#22d3a6");
@@ -3111,24 +3123,26 @@ function drawGame(){
     ctx.fillStyle = watchGrad; ctx.fill();
     ctx.save();
     ctx.shadowColor = "#22d3a6"; ctx.shadowBlur = 14;
-    text("WATCH AD", AD_REVIVE_BTN_WATCH.x + AD_REVIVE_BTN_WATCH.w/2, AD_REVIVE_BTN_WATCH.y + AD_REVIVE_BTN_WATCH.h/2, 15, "#050811", "center", 2);
+    text("WATCH AD", AD_REVIVE_BTN_WATCH.x + AD_REVIVE_BTN_WATCH.w/2, AD_REVIVE_BTN_WATCH.y + AD_REVIVE_BTN_WATCH.h/2, 14, "#050811", "center", 2);
     ctx.restore();
     /* NO THANKS button */
+    AD_REVIVE_BTN_NO.w = popBtnW;
+    AD_REVIVE_BTN_NO.x = popCx + 4;
     rr(AD_REVIVE_BTN_NO.x, AD_REVIVE_BTN_NO.y, AD_REVIVE_BTN_NO.w, AD_REVIVE_BTN_NO.h, 14);
     ctx.fillStyle = "rgba(15,20,30,0.80)"; ctx.fill();
     ctx.strokeStyle = "#465268"; ctx.lineWidth = 1.5; ctx.stroke();
-    text("NO THANKS", AD_REVIVE_BTN_NO.x + AD_REVIVE_BTN_NO.w/2, AD_REVIVE_BTN_NO.y + AD_REVIVE_BTN_NO.h/2, 13, "#9ca3af", "center", 1);
+    text("NO THANKS", AD_REVIVE_BTN_NO.x + AD_REVIVE_BTN_NO.w/2, AD_REVIVE_BTN_NO.y + AD_REVIVE_BTN_NO.h/2, 12, "#9ca3af", "center", 1);
   }
 
   if (S.phase === "over") {
-    rr(30, 372, W - 60, 192, 18);
+    rr(popLeft, 372, popW, 192, 18);
     ctx.fillStyle = "rgba(5,6,10,0.90)"; ctx.fill();
     ctx.strokeStyle = S.newBest ? "#ffd166" : "#2a3140"; ctx.lineWidth = 2; ctx.stroke();
-    text(S.newBest ? "NEW BEST!" : "WIPED OUT", 225, 406, 29, S.newBest ? "#ffd166" : "#ff4d5e", "center", 2);
-    text("BANKED THIS RUN", 225, 442, 11, "#ffffff", "center", 2);
-    text(String(S.banked), 225, 470, 34, "#ffffff");
-    text("BEST " + best + "     COINS +" + S.coinsRun, 225, 502, 12, "#ffffff", "center", 1);
-    text("TAP TO PLAY AGAIN", 225, 534, 12, "#22d3a6", "center", 2);
+    text(S.newBest ? "NEW BEST!" : "WIPED OUT", popCx, 406, 29, S.newBest ? "#ffd166" : "#ff4d5e", "center", 2);
+    text("BANKED THIS RUN", popCx, 442, 11, "#ffffff", "center", 2);
+    text(String(S.banked), popCx, 470, 34, "#ffffff");
+    text("BEST " + best + "     COINS +" + S.coinsRun, popCx, 502, 12, "#ffffff", "center", 1);
+    text("TAP TO PLAY AGAIN", popCx, 534, 12, "#22d3a6", "center", 2);
   }
 
   ctx.restore();

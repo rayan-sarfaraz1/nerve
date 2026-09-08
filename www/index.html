@@ -106,7 +106,7 @@ var AdManager = {
     try {
       var AdMob = window.Capacitor.Plugins.AdMob;
       if (!AdMob) return;
-      AdMob.initialize({ initializeForTesting: true }).then(function() {
+      AdMob.initialize({ initializeForTesting: false }).then(function() {
         AdManager.ready = true;
         AdManager.preload();
       }).catch(function(e) { console.warn('AdMob init failed', e); });
@@ -118,8 +118,8 @@ var AdManager = {
     try {
       var AdMob = window.Capacitor.Plugins.AdMob;
       AdMob.prepareRewardVideoAd({
-        adId: 'ca-app-pub-3940256099942544/5224354917',
-        isTesting: true
+        adId: 'ca-app-pub-5470880582223848/5665799721',
+        isTesting: false
       }).then(function() {
         AdManager.loading = false;
       }).catch(function(e) {
